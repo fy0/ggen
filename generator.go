@@ -227,7 +227,7 @@ func (g *Generator) ApplyBasic(models ...interface{}) {
 // ApplyInterface specifies .diy_method interfaces on structures, implment codes will be generated after calling g.Execute()
 // eg: g.ApplyInterface(func(model.Method){}, model.User{}, model.Company{})
 func (g *Generator) ApplyInterface(fc interface{}, models ...interface{}) {
-	structs, err := generate.ConvertStructs(g.db, models...)
+	structs, err := generate.ConvertStructsWithCallback(g.db, g.StructNameSetup, models...)
 	if err != nil {
 		g.db.Logger.Error(context.Background(), "check struct fail: %v", err)
 		panic("check struct fail")
@@ -342,12 +342,22 @@ func (g *Generator) generateQueryFile() (err error) {
 	}
 
 	if g.judgeMode(WithDefaultQuery) {
-		err = render(tmpl.DefaultQuery, &buf, g)
+		if !g.judgeMode(GenericMode) {
+			err = render(tmpl.DefaultQuery, &buf, g)
+		} else {
+			err = render(tmpl.DefaultQueryGeneric, &buf, g)
+		}
 		if err != nil {
 			return err
 		}
 	}
-	err = render(tmpl.QueryMethod, &buf, g)
+
+	if !g.judgeMode(GenericMode) {
+		err = render(tmpl.QueryMethod, &buf, g)
+	} else {
+		err = render(tmpl.QueryMethodGeneric, &buf, g)
+	}
+
 	if err != nil {
 		return err
 	}
@@ -410,8 +420,18 @@ func (g *Generator) generateSingleQueryFile(data *genInfo) (err error) {
 	data.QueryStructMeta = data.QueryStructMeta.IfaceMode(g.judgeMode(WithQueryInterface))
 
 	structTmpl := tmpl.TableQueryStructWithContext
+
 	if g.judgeMode(WithoutContext) {
-		structTmpl = tmpl.TableQueryStruct
+		if !g.judgeMode(GenericMode) {
+			structTmpl = tmpl.TableQueryStruct
+		} else {
+			structTmpl = tmpl.TableQueryGenericStruct
+		}
+	}
+
+	data.QueryStructMeta.GenericTypeName = g.GenericTypeName
+	if g.GenericTypeName == "" {
+		data.QueryStructMeta.GenericTypeName = "gen.GenericDao"
 	}
 	err = render(structTmpl, &buf, data.QueryStructMeta)
 	if err != nil {
@@ -432,9 +452,11 @@ func (g *Generator) generateSingleQueryFile(data *genInfo) (err error) {
 		}
 	}
 
-	err = render(tmpl.CRUDMethod, &buf, data.QueryStructMeta)
-	if err != nil {
-		return err
+	if !g.judgeMode(GenericMode) {
+		err = render(tmpl.CRUDMethod, &buf, data.QueryStructMeta)
+		if err != nil {
+			return err
+		}
 	}
 
 	defer g.info(fmt.Sprintf("generate query file: %s%s%s.gen.go", g.OutPath, string(os.PathSeparator), data.FileName))

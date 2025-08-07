@@ -163,6 +163,54 @@ func ConvertStructs(db *gorm.DB, structs ...interface{}) (metas []*QueryStructMe
 	return
 }
 
+// ConvertStructs convert to base structures
+func ConvertStructsWithCallback(db *gorm.DB, nameSetup func(name string) string, structs ...interface{}) (metas []*QueryStructMeta, err error) {
+	for _, st := range structs {
+		if isNil(st) {
+			continue
+		}
+		if base, ok := st.(*QueryStructMeta); ok {
+			metas = append(metas, base)
+			continue
+		}
+		if !isStructType(reflect.ValueOf(st)) {
+			return nil, fmt.Errorf("%s is not a struct", reflect.TypeOf(st).String())
+		}
+
+		structType := reflect.TypeOf(st)
+		name := getStructName(structType.String())
+		baseName := name
+
+		if nameSetup != nil {
+			name = nameSetup(name)
+		}
+
+		newStructName := name
+		if st, ok := st.(interface{ GenInternalDoName() string }); ok {
+			newStructName = st.GenInternalDoName()
+		}
+
+		meta := &QueryStructMeta{
+			S:               getPureName(name),
+			ModelStructName: name,
+			QueryStructName: uncaptialize(newStructName),
+			StructInfo:      parser.Param{PkgPath: structType.PkgPath(), Type: baseName, Package: getPackageName(structType.String())},
+			Source:          model.Struct,
+			db:              db,
+		}
+		if err := meta.parseStruct(st); err != nil {
+			return nil, fmt.Errorf("transform struct [%s.%s] error:%s", meta.StructInfo.Package, name, err)
+		}
+		if err := meta.check(); err != nil {
+			db.Logger.Warn(context.Background(), err.Error())
+			continue
+		}
+
+		metas = append(metas, meta)
+	}
+	return
+}
+
 func isNil(i interface{}) bool {
 	if i == nil {
 		return true

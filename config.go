@@ -24,6 +24,8 @@ const (
 
 	// WithQueryInterface generate code with exported interface object
 	WithQueryInterface
+
+	GenericMode
 )
 
 // Config generator's basic configuration
@@ -43,6 +45,9 @@ type Config struct {
 	FieldWithTypeTag  bool // generate with gorm column type tag
 
 	Mode GenerateMode // generate mode
+
+	GenericTypeName string // generic type name
+	StructNameSetup func(name string) string
 
 	queryPkgName   string // generated query code's package name
 	modelPkgPath   string // model pkg path in target project
