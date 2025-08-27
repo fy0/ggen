@@ -21,48 +21,50 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 // QueryMethod query method template
 const QueryMethodGeneric = `
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
-	return &Query{
+	qn := &Query{
 		db: db,
 		{{range $name,$d :=.Data -}}
 		{{$d.ModelStructName}}: new{{$d.ModelStructName}}(db,opts...),
 		{{end -}}
 	}
+
+	qn.QueryBase.Obj = qn
+	return qn
 }
 
 type Query struct{
 	db *gorm.DB
+	gen.QueryBase[*Query]
 
 	{{range $name,$d :=.Data -}}
 	{{$d.ModelStructName}} {{$d.QueryStructName}}
 	{{end}}
 }
 
-func (q *Query) Available() bool { return q.db != nil }
+func (q *Query) DB() *gorm.DB { return q.db }
 
-func (q *Query) clone(db *gorm.DB) *Query {
-	return &Query{
+func (q *Query) Clone(db *gorm.DB) *Query {
+	qn := &Query{
 		db: db,
 		{{range $name,$d :=.Data -}}
 		{{$d.ModelStructName}}: q.{{$d.ModelStructName}}.clone(db),
 		{{end}}
 	}
-}
 
-func (q *Query) ReadDB() *Query {
-	return q.ReplaceDB(q.db.Clauses(dbresolver.Read))
-}
-
-func (q *Query) WriteDB() *Query {
-	return q.ReplaceDB(q.db.Clauses(dbresolver.Write))
+	qn.QueryBase.Obj = qn
+	return qn
 }
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
-	return &Query{
+	qn := &Query{
 		db: db,
 		{{range $name,$d :=.Data -}}
 		{{$d.ModelStructName}}: q.{{$d.ModelStructName}}.replaceDB(db),
 		{{end}}
 	}
+
+	qn.QueryBase.Obj = qn
+	return qn
 }
 
 type queryCtx struct{ 
@@ -79,13 +81,9 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx  {
 	}
 }
 
-func (q *Query) Transaction(fc func(tx *Query) error, opts ...*sql.TxOptions) error {
-	return q.db.Transaction(func(tx *gorm.DB) error { return fc(q.clone(tx)) }, opts...)
-}
-
 func (q *Query) Begin(opts ...*sql.TxOptions) *QueryTx {
 	tx := q.db.Begin(opts...)
-	return &QueryTx{Query: q.clone(tx), Error: tx.Error}
+	return &QueryTx{Query: q.Clone(tx), Error: tx.Error}
 }
 
 type QueryTx struct {
@@ -108,7 +106,6 @@ func (q *QueryTx) SavePoint(name string) error {
 func (q *QueryTx) RollbackTo(name string) error {
 	return q.db.RollbackTo(name).Error
 }
-
 `
 
 // QueryMethodTest query method test template
